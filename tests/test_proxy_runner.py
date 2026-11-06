@@ -10,6 +10,7 @@ class ProxyTest(unittest.TestCase):
         text = proxy.wireproxy_config(Path("/x/wg.conf"), 4321)
         self.assertIn("WGConfig = /x/wg.conf", text)
         self.assertIn("BindAddress = 127.0.0.1:4321", text)
+        self.assertIn("ResolveStrategy = ipv4", text)
 
     def test_free_port_and_port_open(self):
         port = proxy.free_port()

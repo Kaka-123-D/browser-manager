@@ -34,8 +34,13 @@ def free_port() -> int:
         return sock.getsockname()[1]
 
 
+# Proton configs carry an IPv6 address, so wireproxy would look up AAAA records first; some
+# Google hosts (one.google.com) then hang forever while resolving. IPv4 first avoids that.
+RESOLVE_SECTION = "[Resolve]\nResolveStrategy = ipv4\n"
+
+
 def wireproxy_config(wg_conf: Path, port: int) -> str:
-    return f"WGConfig = {wg_conf}\n\n[Socks5]\nBindAddress = 127.0.0.1:{port}\n"
+    return f"WGConfig = {wg_conf}\n\n{RESOLVE_SECTION}\n[Socks5]\nBindAddress = 127.0.0.1:{port}\n"
 
 
 def port_open(port: int) -> bool:

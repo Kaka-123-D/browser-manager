@@ -25,6 +25,7 @@ class FixedRecordTest(unittest.TestCase):
         self.assertIn("[http]\nBindAddress = 127.0.0.1:18001\nUsername = bmuser\nPassword = secret", text)
         self.assertIn("[Socks5]\nBindAddress = 127.0.0.1:18002\nUsername = bmuser\nPassword = secret", text)
         self.assertNotIn("0.0.0.0", text)
+        self.assertIn("ResolveStrategy = ipv4", text)
 
     def test_with_enabled_returns_new_list(self):
         records = [fixed.FixedProxy("k", 1, 2, "u", "p")]

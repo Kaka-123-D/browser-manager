@@ -80,7 +80,7 @@ def with_enabled(records: list[FixedProxy], key: str, enabled: bool) -> list[Fix
 def wireproxy_config(wg_conf: Path, record: FixedProxy) -> str:
     login = f"Username = {record.username}\nPassword = {record.password}\n"
     return (
-        f"WGConfig = {wg_conf}\n\n"
+        f"WGConfig = {wg_conf}\n\n{proxy.RESOLVE_SECTION}\n"
         f"[http]\nBindAddress = 127.0.0.1:{record.http_port}\n{login}\n"
         f"[Socks5]\nBindAddress = 127.0.0.1:{record.socks_port}\n{login}"
     )
