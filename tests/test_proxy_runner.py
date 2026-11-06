@@ -12,6 +12,21 @@ class ProxyTest(unittest.TestCase):
         self.assertIn("BindAddress = 127.0.0.1:4321", text)
         self.assertIn("ResolveStrategy = ipv4", text)
 
+    def test_ipv4_only_drops_ipv6_entries(self):
+        text = ("[Interface]\nPrivateKey = abc=\nAddress = 10.2.0.2/32, 2a07:b944::2:2/128\n"
+                "DNS = 10.2.0.1, 2a07:b944::2:1\n\n[Peer]\nAllowedIPs = 0.0.0.0/0, ::/0\nEndpoint = 1.2.3.4:51820\n")
+        out = proxy.ipv4_only(text)
+        self.assertIn("Address = 10.2.0.2/32\n", out)
+        self.assertIn("DNS = 10.2.0.1\n", out)
+        self.assertIn("PrivateKey = abc=\n", out)
+        self.assertIn("AllowedIPs = 0.0.0.0/0, ::/0\n", out)
+        self.assertIn("Endpoint = 1.2.3.4:51820\n", out)
+
+    def test_ipv4_only_drops_line_left_empty(self):
+        out = proxy.ipv4_only("[Interface]\nDNS = 2a07:b944::2:1\nAddress = 10.2.0.2/32\n")
+        self.assertNotIn("DNS", out)
+        self.assertIn("Address = 10.2.0.2/32", out)
+
     def test_free_port_and_port_open(self):
         port = proxy.free_port()
         self.assertFalse(proxy.port_open(port))

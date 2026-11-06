@@ -155,7 +155,7 @@ class Manager:
             if conf is None or not conf.is_file():
                 raise store.ValidationError(f"Không thấy file cấu hình cho {key}")
             slug = "fixed_" + key.replace("vpn:", "").replace("/", "_")
-            running = proxy.launch(key, slug, fixed.wireproxy_config(conf, record), record.http_port)
+            running = proxy.launch(key, slug, fixed.wireproxy_config(proxy.ipv4_wg_copy(conf, slug), record), record.http_port)
             self._fixed_running = {**self._fixed_running, key: running}
             self._fixed = fixed.with_enabled(self._fixed, key, True)
             fixed.save(self._fixed)

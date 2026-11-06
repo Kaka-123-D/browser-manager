@@ -36,7 +36,33 @@ def free_port() -> int:
 
 # Proton configs carry an IPv6 address, so wireproxy would look up AAAA records first; some
 # Google hosts (one.google.com) then hang forever while resolving. IPv4 first avoids that.
+# The [Resolve] option only covers the SOCKS5 port; the HTTP port resolves through the tunnel's
+# own resolver, which asks for AAAA whenever the interface has an IPv6 address. So the tunnel
+# also runs on a copy of the WireGuard config without IPv6 addresses (ipv4_wg_copy).
 RESOLVE_SECTION = "[Resolve]\nResolveStrategy = ipv4\n"
+_V4_ONLY_KEYS = ("address", "dns")
+
+
+def ipv4_only(wg_text: str) -> str:
+    """Drop IPv6 entries from Address and DNS lines; every other line is kept as is."""
+    lines = []
+    for line in wg_text.splitlines():
+        name, sep, value = line.partition("=")
+        if sep and name.strip().lower() in _V4_ONLY_KEYS:
+            kept = [v.strip() for v in value.split(",") if v.strip() and ":" not in v]
+            if not kept:
+                continue
+            line = f"{name.strip()} = {', '.join(kept)}"
+        lines.append(line)
+    return "\n".join(lines) + "\n"
+
+
+def ipv4_wg_copy(wg_conf: Path, slug: str) -> Path:
+    """Write the IPv4-only copy next to the wireproxy configs (mode 600, it holds the key)."""
+    copy = paths.PROXY_CONF_DIR / f"{slug}.wg.conf"
+    copy.write_text(ipv4_only(wg_conf.read_text(encoding="utf-8")), encoding="utf-8")
+    copy.chmod(0o600)
+    return copy
 
 
 def wireproxy_config(wg_conf: Path, port: int) -> str:
@@ -53,7 +79,7 @@ def start(key: str, wg_conf: Path) -> RunningProxy:
     """Tunnel for profiles: SOCKS5 without login on a random loopback port."""
     port = free_port()
     slug = key.replace("vpn:", "").replace("/", "_")
-    return launch(key, slug, wireproxy_config(wg_conf, port), port)
+    return launch(key, slug, wireproxy_config(ipv4_wg_copy(wg_conf, slug), port), port)
 
 
 def launch(key: str, slug: str, config_text: str, ready_port: int) -> RunningProxy:
