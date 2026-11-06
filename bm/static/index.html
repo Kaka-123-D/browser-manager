@@ -370,9 +370,10 @@ async function act(name, kind, fn, okText) {
   finally { busy.delete(name); await refresh(true); }
 }
 
-const startProfile = (p) => act(p.name, "start", () => api("POST", `/api/profiles/${p.name}/start`), `Đã mở ${p.name}`);
-const loginProfile = (p) => act(p.name, "start", () => api("POST", `/api/profiles/${p.name}/login`),
-  `Đã mở Chrome thường cho ${p.name}. Đăng nhập xong thì Cmd+Q để thoát`);
+// The button opens ordinary Chrome (no automation), so Google sign-in works like a normal browser.
+// Scripts that need DevTools control call POST /api/profiles/<name>/start directly.
+const startProfile = (p) => act(p.name, "start", () => api("POST", `/api/profiles/${p.name}/login`),
+  `Đã mở ${p.name}. Thoát hẳn bằng Cmd+Q hoặc nút Đóng`);
 const stopProfile = (p) => act(p.name, "stop", () => api("POST", `/api/profiles/${p.name}/stop`), `Đã đóng ${p.name}`);
 const checkIp = (p) => act(p.name, "ip", async () => {
   exits.set(p.name, { ...(await api("POST", `/api/profiles/${p.name}/ip`)).exit, fresh: true });
@@ -434,8 +435,6 @@ function cardBody(p) {
     h("div", { class: "actions" },
       main,
       spinnerBtn("Kiểm IP", "ghost", kind === "ip", () => checkIp(p), !!kind),
-      p.running ? null : h("button", { class: "btn ghost", title: "Mở Chrome thường, không điều khiển tự động, để đăng nhập Google",
-        onclick: () => loginProfile(p), ...(kind ? { disabled: "" } : {}) }, "Đăng nhập"),
       h("span", { class: "grow" }),
       h("button", { class: "btn ghost", onclick: () => openSheet(p), ...(locked ? { disabled: "" } : {}) }, "Sửa"),
       delBtn),
