@@ -1,4 +1,5 @@
 """Fixed locations used by the manager."""
+import shutil
 from pathlib import Path
 
 HOME = Path.home()
@@ -8,7 +9,9 @@ PROFILE_DATA_DIR = DATA_DIR / "profiles"
 PROXY_CONF_DIR = DATA_DIR / "proxies"
 LOG_DIR = DATA_DIR / "logs"
 VENV_PYTHON = DATA_DIR / "venv" / "bin" / "python"
-WIREPROXY_BIN = HOME / ".local" / "bin" / "wireproxy"
+_LOCAL_WIREPROXY = HOME / ".local" / "bin" / "wireproxy"
+# Prefer ~/.local/bin (install-wireproxy.sh puts it there), else any wireproxy on PATH.
+WIREPROXY_BIN = Path(shutil.which("wireproxy") or _LOCAL_WIREPROXY) if not _LOCAL_WIREPROXY.exists() else _LOCAL_WIREPROXY
 CHROME_BIN = Path("/Applications/Google Chrome.app/Contents/MacOS/Google Chrome")
 
 # WireGuard configs downloaded from VPN providers, one sub-folder per provider.

@@ -54,7 +54,7 @@ def start(key: str, wg_conf: Path) -> RunningProxy:
 def launch(key: str, slug: str, config_text: str, ready_port: int) -> RunningProxy:
     """Run wireproxy with the given config and wait until ready_port accepts connections."""
     if not paths.WIREPROXY_BIN.exists():
-        raise RuntimeError(f"Chưa có wireproxy ở {paths.WIREPROXY_BIN}")
+        raise RuntimeError(f"Chưa có wireproxy ở {paths.WIREPROXY_BIN}. Thoát Browser Manager rồi mở lại bằng start.command để tự cài, hoặc chạy ./install-wireproxy.sh")
     conf_file = paths.PROXY_CONF_DIR / f"{slug}.conf"
     conf_file.write_text(config_text, encoding="utf-8")
     conf_file.chmod(0o600)
