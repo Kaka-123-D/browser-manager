@@ -371,6 +371,8 @@ async function act(name, kind, fn, okText) {
 }
 
 const startProfile = (p) => act(p.name, "start", () => api("POST", `/api/profiles/${p.name}/start`), `Đã mở ${p.name}`);
+const loginProfile = (p) => act(p.name, "start", () => api("POST", `/api/profiles/${p.name}/login`),
+  `Đã mở Chrome thường cho ${p.name}. Đăng nhập xong thì Cmd+Q để thoát`);
 const stopProfile = (p) => act(p.name, "stop", () => api("POST", `/api/profiles/${p.name}/stop`), `Đã đóng ${p.name}`);
 const checkIp = (p) => act(p.name, "ip", async () => {
   exits.set(p.name, { ...(await api("POST", `/api/profiles/${p.name}/ip`)).exit, fresh: true });
@@ -432,6 +434,8 @@ function cardBody(p) {
     h("div", { class: "actions" },
       main,
       spinnerBtn("Kiểm IP", "ghost", kind === "ip", () => checkIp(p), !!kind),
+      p.running ? null : h("button", { class: "btn ghost", title: "Mở Chrome thường, không điều khiển tự động, để đăng nhập Google",
+        onclick: () => loginProfile(p), ...(kind ? { disabled: "" } : {}) }, "Đăng nhập"),
       h("span", { class: "grow" }),
       h("button", { class: "btn ghost", onclick: () => openSheet(p), ...(locked ? { disabled: "" } : {}) }, "Sửa"),
       delBtn),

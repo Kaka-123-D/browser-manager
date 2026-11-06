@@ -2,11 +2,12 @@
 from __future__ import annotations
 
 import json
+import os
 import subprocess
 import threading
 from pathlib import Path
 
-from . import fixed, paths, proxy, store
+from . import fixed, paths, proxy, runner, store
 
 APP_ROOT = Path(__file__).resolve().parent.parent
 
@@ -76,7 +77,8 @@ class Manager:
             store.save(self._profiles)
 
     # ---- browsers ----
-    def start(self, name: str) -> None:
+    def start(self, name: str, plain: bool = False) -> None:
+        """plain=True opens ordinary Chrome (no Playwright) so Google accepts a manual sign-in."""
         with self._lock:
             self._reap()
             profile = self._require(name)
@@ -90,17 +92,20 @@ class Manager:
             "timezone": timezone,
             "locale": profile.locale,
             "start_url": profile.start_url,
-            "cdp_port": proxy.free_port(),
+            "cdp_port": None if plain else proxy.free_port(),
         }
+        if plain and not paths.CHROME_BIN.exists():
+            raise RuntimeError(f"Không thấy Chrome ở {paths.CHROME_BIN}")
+        command = (runner.plain_chrome_args(settings, str(paths.CHROME_BIN)) if plain
+                   else [str(paths.VENV_PYTHON), "-m", "bm.runner", json.dumps(settings)])
+        env = {**os.environ, "TZ": timezone} if plain and timezone else None
         log = open(paths.LOG_DIR / f"browser-{name}.log", "ab")
-        process = subprocess.Popen(
-            [str(paths.VENV_PYTHON), "-m", "bm.runner", json.dumps(settings)],
-            cwd=APP_ROOT, stdout=log, stderr=log,
-        )
+        process = subprocess.Popen(command, cwd=APP_ROOT, stdout=log, stderr=log, env=env)
         log.close()
         with self._lock:
             self._browsers = {**self._browsers, name: process}
-            self._cdp_ports = {**self._cdp_ports, name: settings["cdp_port"]}
+            if settings["cdp_port"]:
+                self._cdp_ports = {**self._cdp_ports, name: settings["cdp_port"]}
 
     def stop(self, name: str) -> None:
         with self._lock:

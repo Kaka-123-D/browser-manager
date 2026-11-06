@@ -35,6 +35,18 @@ class RunnerTest(unittest.TestCase):
         self.assertNotIn("proxy", opts)
         self.assertNotIn("timezone_id", opts)
 
+    def test_plain_chrome_has_no_automation_and_strips_login(self):
+        args = runner.plain_chrome_args({
+            "data_dir": "/d", "locale": "en-US", "start_url": "https://accounts.google.com",
+            "proxy_url": "http://u:p@127.0.0.1:18001",
+        }, "/chrome")
+        self.assertEqual(args[0], "/chrome")
+        self.assertIn("--user-data-dir=/d", args)
+        self.assertIn("--proxy-server=http://127.0.0.1:18001", args)
+        self.assertEqual(args[-1], "https://accounts.google.com")
+        self.assertFalse(any("remote-debugging" in a or "enable-automation" in a for a in args))
+        self.assertFalse(any("u:p" in a for a in args))
+
 
 if __name__ == "__main__":
     unittest.main()

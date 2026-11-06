@@ -48,6 +48,22 @@ def proxy_option(url: str) -> dict:
     }
 
 
+def plain_chrome_args(settings: dict, chrome_bin: str) -> list[str]:
+    """Ordinary Chrome on the same profile folder, with no automation attached.
+
+    Google refuses sign-in from browsers driven by automation, so the owner signs in here once;
+    the cookies stay in the folder and later automated launches reuse them.
+    """
+    args = [chrome_bin, f"--user-data-dir={settings['data_dir']}", "--no-first-run",
+            "--no-default-browser-check", f"--lang={settings['locale']}", *WEBRTC_ARGS]
+    if settings.get("proxy_url"):
+        # Chrome takes no login in this flag; it asks for the proxy user/pass in a dialog instead.
+        args.append(f"--proxy-server={proxy_option(settings['proxy_url'])['server']}")
+    if settings.get("start_url", "about:blank") != "about:blank":
+        args.append(settings["start_url"])
+    return args
+
+
 def main() -> int:
     settings = json.loads(sys.argv[1])
     with sync_playwright() as pw:

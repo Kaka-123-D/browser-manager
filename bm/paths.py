@@ -9,6 +9,7 @@ PROXY_CONF_DIR = DATA_DIR / "proxies"
 LOG_DIR = DATA_DIR / "logs"
 VENV_PYTHON = DATA_DIR / "venv" / "bin" / "python"
 WIREPROXY_BIN = HOME / ".local" / "bin" / "wireproxy"
+CHROME_BIN = Path("/Applications/Google Chrome.app/Contents/MacOS/Google Chrome")
 
 # WireGuard configs downloaded from VPN providers, one sub-folder per provider.
 VPN_DIRS = {

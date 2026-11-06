@@ -16,7 +16,7 @@ from . import paths, store
 from .manager import Manager
 
 INDEX_HTML = Path(__file__).with_name("static") / "index.html"
-ACTION_RE = re.compile(r"^/api/profiles/([a-z0-9-]+)/(start|stop|ip)$")
+ACTION_RE = re.compile(r"^/api/profiles/([a-z0-9-]+)/(start|login|stop|ip)$")
 PROFILE_RE = re.compile(r"^/api/profiles/([a-z0-9-]+)$")
 FIXED_RE = re.compile(r"^/api/fixed(?:/(start|stop|ip|delete))?$")
 ALLOWED_HOSTS = {f"127.0.0.1:{paths.SERVER_PORT}", f"localhost:{paths.SERVER_PORT}"}
@@ -56,8 +56,8 @@ class Handler(BaseHTTPRequestHandler):
         if not match:
             raise LookupError
         name, action = match.groups()
-        if action == "start":
-            manager.start(name)
+        if action in ("start", "login"):
+            manager.start(name, plain=action == "login")
         elif action == "stop":
             manager.stop(name)
         else:
