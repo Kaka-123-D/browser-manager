@@ -1,4 +1,5 @@
-"""wireproxy processes: one local SOCKS5 port per WireGuard config, shared by profiles."""
+"""wireproxy processes: one local SOCKS5 port per WireGuard config, shared by profiles,
+plus fixed proxies with a login (see fixed.py)."""
 from __future__ import annotations
 
 import json
@@ -44,12 +45,18 @@ def port_open(port: int) -> bool:
 
 
 def start(key: str, wg_conf: Path) -> RunningProxy:
-    if not paths.WIREPROXY_BIN.exists():
-        raise RuntimeError(f"Chưa có wireproxy ở {paths.WIREPROXY_BIN}")
+    """Tunnel for profiles: SOCKS5 without login on a random loopback port."""
     port = free_port()
     slug = key.replace("vpn:", "").replace("/", "_")
+    return launch(key, slug, wireproxy_config(wg_conf, port), port)
+
+
+def launch(key: str, slug: str, config_text: str, ready_port: int) -> RunningProxy:
+    """Run wireproxy with the given config and wait until ready_port accepts connections."""
+    if not paths.WIREPROXY_BIN.exists():
+        raise RuntimeError(f"Chưa có wireproxy ở {paths.WIREPROXY_BIN}")
     conf_file = paths.PROXY_CONF_DIR / f"{slug}.conf"
-    conf_file.write_text(wireproxy_config(wg_conf, port), encoding="utf-8")
+    conf_file.write_text(config_text, encoding="utf-8")
     conf_file.chmod(0o600)
     log = open(paths.LOG_DIR / f"proxy-{slug}.log", "ab")
     process = subprocess.Popen([str(paths.WIREPROXY_BIN), "-c", str(conf_file)], stdout=log, stderr=log)
@@ -58,11 +65,11 @@ def start(key: str, wg_conf: Path) -> RunningProxy:
     while time.monotonic() < deadline:
         if process.poll() is not None:
             raise RuntimeError(f"wireproxy thoát sớm, xem {paths.LOG_DIR}/proxy-{slug}.log")
-        if port_open(port):
-            return RunningProxy(key, port, process)
+        if port_open(ready_port):
+            return RunningProxy(key, ready_port, process)
         time.sleep(0.3)
     process.terminate()
-    raise RuntimeError(f"wireproxy không mở cổng {port} sau {READY_TIMEOUT_S}s")
+    raise RuntimeError(f"wireproxy không mở cổng {ready_port} sau {READY_TIMEOUT_S}s")
 
 
 def stop(proxy: RunningProxy) -> None:

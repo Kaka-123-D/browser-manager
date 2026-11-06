@@ -18,6 +18,7 @@ from .manager import Manager
 INDEX_HTML = Path(__file__).with_name("static") / "index.html"
 ACTION_RE = re.compile(r"^/api/profiles/([a-z0-9-]+)/(start|stop|ip)$")
 PROFILE_RE = re.compile(r"^/api/profiles/([a-z0-9-]+)$")
+FIXED_RE = re.compile(r"^/api/fixed(?:/(start|stop|ip|delete))?$")
 ALLOWED_HOSTS = {f"127.0.0.1:{paths.SERVER_PORT}", f"localhost:{paths.SERVER_PORT}"}
 MAX_BODY = 16_384
 
@@ -48,6 +49,9 @@ class Handler(BaseHTTPRequestHandler):
         if self.path == "/api/profiles":
             manager.save_profile(self._json_body())
             return {"ok": True}
+        fixed_match = FIXED_RE.match(self.path)
+        if fixed_match:
+            return self._route_fixed(fixed_match.group(1) or "add")
         match = ACTION_RE.match(self.path)
         if not match:
             raise LookupError
@@ -58,6 +62,15 @@ class Handler(BaseHTTPRequestHandler):
             manager.stop(name)
         else:
             return {"ok": True, "exit": manager.check_ip(name)}
+        return {"ok": True}
+
+    def _route_fixed(self, action: str) -> dict:
+        key = str(self._json_body().get("key", ""))
+        if action == "ip":
+            return {"ok": True, "exit": manager.check_fixed_ip(key)}
+        handler = {"add": manager.add_fixed, "start": manager.start_fixed,
+                   "stop": manager.stop_fixed, "delete": manager.delete_fixed}[action]
+        handler(key)
         return {"ok": True}
 
     def _route_delete(self) -> dict:

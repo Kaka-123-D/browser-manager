@@ -142,6 +142,16 @@
   .tunnel { display: inline-flex; gap: 8px; align-items: center; padding: 6px 12px; border-radius: 980px; background: var(--surface-solid); border: 1px solid var(--hair); animation: enter .4s var(--spring) both; }
   .tunnel code { font: 12px ui-monospace, "SF Mono", Menlo, monospace; color: var(--text-2); }
 
+  /* ---------- fixed proxies ---------- */
+  .fixed-head { margin-top: 40px; }
+  .fixed-add { display: flex; gap: 10px; align-items: center; margin: 0 0 16px; flex-wrap: wrap; }
+  .fixed-add .group { margin: 0; flex: 0 1 380px; }
+  .copy-row { display: flex; gap: 6px; align-items: center; }
+  .copy-row .lbl { width: 54px; flex: none; color: var(--text-2); font-size: 12px; }
+  .copy-row code { flex: 1; min-width: 0; font: 12px ui-monospace, "SF Mono", Menlo, monospace; color: var(--text);
+    background: var(--surface-solid); border: 1px solid var(--hair); border-radius: 8px; padding: 6px 8px;
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
   /* ---------- sheet ---------- */
   .scrim {
     position: fixed; inset: 0; z-index: 30; background: rgba(0,0,0,.28); opacity: 0; pointer-events: none;
@@ -244,6 +254,13 @@
   <div class="section-head"><h2>Profiles</h2><span>Mỗi profile là một Chrome riêng: cookie, đăng nhập, mạng riêng</span></div>
   <div id="grid" class="grid"></div>
   <div id="tunnels" class="tunnels"></div>
+
+  <div class="section-head fixed-head"><h2>Proxy cố định</h2><span>Cho ứng dụng khác trên máy Mac này: cổng cố định, có user/pass, chạy cả khi không mở Chrome</span></div>
+  <div class="fixed-add">
+    <div class="group"><div class="field select"><label for="fixed-vpn">Máy chủ VPN</label><select id="fixed-vpn"></select></div></div>
+    <button class="btn primary" id="fixed-add-btn">Tạo proxy</button>
+  </div>
+  <div id="fixed-grid" class="grid"></div>
 </main>
 
 <div class="scrim" id="scrim"></div>
@@ -303,7 +320,8 @@ const PALETTE = ["#ff9500", "#ff2d55", "#af52de", "#5856d6", "#007aff", "#32ade6
 const busy = new Map();     // name -> "start" | "stop" | "ip"
 const exits = new Map();    // name -> exit info from last IP check
 const cards = new Map();    // name -> card element
-let state = { profiles: [], vpn_configs: [], proxies: [] };
+let state = { profiles: [], vpn_configs: [], proxies: [], fixed: [] };
+const fixedExits = new Map(); // fixed proxy key -> exit info
 
 /* ---------- helpers ---------- */
 async function api(method, path, body) {
@@ -446,7 +464,86 @@ function render() {
     prev = card;
   });
   renderHeader();
+  renderFixed();
 }
+
+/* ---------- fixed proxies ---------- */
+const fixedBusy = (key) => busy.get("fixed:" + key);
+const fixedAct = (key, kind, path, okText, after) => act("fixed:" + key, kind, async () => {
+  const data = await api("POST", path, { key });
+  if (after) after(data);
+}, okText);
+
+async function copyText(text) {
+  try { await navigator.clipboard.writeText(text); toast("Đã chép"); }
+  catch { toast("Trình duyệt không cho chép, hãy bôi đen rồi Cmd+C", "err"); }
+}
+
+function copyRow(label, value, password) {
+  const shown = password ? value.split(password).join("••••••") : value;
+  return h("div", { class: "copy-row" }, h("span", { class: "lbl" }, label),
+    h("code", { title: shown }, shown), h("button", { class: "btn ghost", onclick: () => copyText(value) }, "Chép"));
+}
+
+function fixedCard(f) {
+  const kind = fixedBusy(f.key);
+  const info = fixedExits.get(f.key);
+  const pill = kind === "start" ? h("span", { class: "pill busy" }, h("span", { class: "led" }), "Đang bật…")
+    : f.running ? h("span", { class: "pill on" }, h("span", { class: "led" }), "Đang chạy")
+    : h("span", { class: "pill" }, h("span", { class: "led" }), "Đã tắt");
+  const exit = kind === "ip" ? h("span", { class: "v muted" }, "Đang kiểm tra IP…")
+    : info ? h("span", { class: "v" }, `${flag(info.country)}  ${info.ip} · ${[info.city, info.country].filter(Boolean).join(", ")}`)
+    : h("span", { class: "v muted" }, "Chưa kiểm IP");
+  const delBtn = h("button", { class: "btn danger", ...(f.running || kind ? { disabled: "" } : {}) }, "Xoá");
+  delBtn.onclick = () => {
+    if (!delBtn.classList.contains("armed")) {
+      delBtn.classList.add("armed"); delBtn.textContent = "Xoá thật?";
+      setTimeout(() => { delBtn.classList.remove("armed"); delBtn.textContent = "Xoá"; }, 3000);
+      return;
+    }
+    fixedAct(f.key, "delete", "/api/fixed/delete", "Đã xoá proxy cố định");
+  };
+  const main = f.running
+    ? spinnerBtn("Tắt", "", kind === "stop", () => fixedAct(f.key, "stop", "/api/fixed/stop", "Đã tắt proxy"), !!kind)
+    : spinnerBtn("Bật", "primary", kind === "start", () => fixedAct(f.key, "start", "/api/fixed/start", "Đã bật proxy"), !!kind);
+  return h("article", { class: "card" },
+    h("div", { class: "card-top" },
+      h("div", { class: "avatar", style: `background:${colorFor(f.key)}` }, "⇄"),
+      h("div", { class: "card-title" }, h("strong", {}, proxyLabel(f.key)),
+        h("small", {}, `HTTP ${f.http_port} · SOCKS5 ${f.socks_port}${f.enabled ? " · tự bật khi mở manager" : ""}`)),
+      pill),
+    h("div", { class: "rows" },
+      copyRow("HTTP", f.http_url, f.password),
+      copyRow("SOCKS5", f.socks_url, f.password),
+      copyRow("ip:port", f.plain, f.password),
+      copyRow("User", f.username),
+      copyRow("Pass", f.password, f.password),
+      h("div", { class: "row" }, h("span", { class: "k" }, "📍"), exit)),
+    h("div", { class: "actions" },
+      main,
+      spinnerBtn("Kiểm IP", "ghost", kind === "ip", () => fixedAct(f.key, "ip", "/api/fixed/ip", null,
+        (data) => fixedExits.set(f.key, data.exit)), !!kind || !f.running),
+      h("span", { class: "grow" }),
+      delBtn));
+}
+
+function renderFixed() {
+  const select = $("#fixed-vpn");
+  const free = state.vpn_configs.filter((k) => !state.fixed.some((f) => f.key === k));
+  if (select.dataset.options !== free.join("|")) {
+    select.dataset.options = free.join("|");
+    select.replaceChildren(...free.map((k) => h("option", { value: k }, proxyLabel(k))));
+  }
+  $("#fixed-add-btn").disabled = !free.length;
+  $("#fixed-grid").replaceChildren(...(state.fixed.length ? state.fixed.map(fixedCard)
+    : [h("div", { class: "empty", style: "grid-column:1/-1" }, h("strong", {}, "Chưa có proxy cố định"),
+        h("p", {}, "Chọn một máy chủ VPN rồi bấm Tạo proxy để có địa chỉ dạng http://user:pass@127.0.0.1:cổng."))]));
+}
+
+$("#fixed-add-btn").onclick = () => {
+  const key = $("#fixed-vpn").value;
+  if (key) fixedAct(key, "add", "/api/fixed", "Đã tạo proxy cố định, bấm Bật để chạy");
+};
 
 function renderHeader() {
   const running = state.profiles.filter((p) => p.running).length;

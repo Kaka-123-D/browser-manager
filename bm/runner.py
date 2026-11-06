@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import json
 import sys
+from urllib.parse import unquote, urlsplit
 
 from playwright.sync_api import sync_playwright
 
@@ -31,8 +32,20 @@ def launch_options(settings: dict) -> dict:
     if settings.get("timezone"):
         options["timezone_id"] = settings["timezone"]
     if settings.get("proxy_url"):
-        options["proxy"] = {"server": settings["proxy_url"]}
+        options["proxy"] = proxy_option(settings["proxy_url"])
     return options
+
+
+def proxy_option(url: str) -> dict:
+    """Playwright wants the login apart from the server address."""
+    parts = urlsplit(url)
+    if not parts.username:
+        return {"server": url}
+    return {
+        "server": f"{parts.scheme}://{parts.hostname}:{parts.port}",
+        "username": unquote(parts.username),
+        "password": unquote(parts.password or ""),
+    }
 
 
 def main() -> int:

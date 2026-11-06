@@ -6,7 +6,7 @@ import subprocess
 import threading
 from pathlib import Path
 
-from . import paths, proxy, store
+from . import fixed, paths, proxy, store
 
 APP_ROOT = Path(__file__).resolve().parent.parent
 
@@ -19,6 +19,9 @@ class Manager:
         self._proxies: dict[str, proxy.RunningProxy] = {}
         self._browsers: dict[str, subprocess.Popen] = {}
         self._cdp_ports: dict[str, int] = {}
+        self._fixed = fixed.load()
+        self._fixed_running: dict[str, proxy.RunningProxy] = {}
+        threading.Thread(target=self._autostart_fixed, daemon=True).start()
 
     # ---- read ----
     def state(self) -> dict:
@@ -31,7 +34,16 @@ class Manager:
                 ],
                 "vpn_configs": store.list_vpn_configs(),
                 "proxies": [{"key": k, "port": p.port} for k, p in self._proxies.items()],
+                "fixed": [self._fixed_view(r) for r in self._fixed],
             }
+
+    def _fixed_view(self, record: fixed.FixedProxy) -> dict:
+        return {
+            "key": record.key, "http_port": record.http_port, "socks_port": record.socks_port,
+            "username": record.username, "password": record.password, "enabled": record.enabled,
+            "http_url": record.http_url(), "socks_url": record.socks_url(), "plain": record.plain(),
+            "running": record.key in self._fixed_running,
+        }
 
     # ---- profiles ----
     def save_profile(self, raw: dict) -> None:
@@ -111,9 +123,73 @@ class Manager:
         for name in list(self._browsers):
             self.stop(name)
         with self._lock:
-            for running in self._proxies.values():
+            for running in [*self._proxies.values(), *self._fixed_running.values()]:
                 proxy.stop(running)
             self._proxies = {}
+            self._fixed_running = {}
+
+    # ---- fixed proxies ----
+    def add_fixed(self, key: str) -> None:
+        with self._lock:
+            if key not in store.list_vpn_configs():
+                raise store.ValidationError(f"Không có máy chủ VPN {key}")
+            if fixed.find(self._fixed, key):
+                raise store.ValidationError("Máy chủ này đã có proxy cố định")
+            self._fixed = [*self._fixed, fixed.new_record(key, self._fixed)]
+            fixed.save(self._fixed)
+
+    def start_fixed(self, key: str) -> None:
+        with self._lock:
+            self._reap()
+            record = self._require_fixed(key)
+            if key in self._fixed_running:
+                return
+            if key in self._proxies:
+                raise store.ValidationError("Đang có Chrome dùng máy chủ này qua đường hầm riêng. Đóng nó rồi bật lại.")
+            conf = store.vpn_config_path(key)
+            if conf is None or not conf.is_file():
+                raise store.ValidationError(f"Không thấy file cấu hình cho {key}")
+            slug = "fixed_" + key.replace("vpn:", "").replace("/", "_")
+            running = proxy.launch(key, slug, fixed.wireproxy_config(conf, record), record.http_port)
+            self._fixed_running = {**self._fixed_running, key: running}
+            self._fixed = fixed.with_enabled(self._fixed, key, True)
+            fixed.save(self._fixed)
+
+    def stop_fixed(self, key: str) -> None:
+        with self._lock:
+            self._reap()
+            self._require_fixed(key)
+            users = [n for n in self._browsers if (p := store.find(self._profiles, n)) and p.proxy == key]
+            if users:
+                raise store.ValidationError(f"Chrome {', '.join(users)} đang đi qua proxy này, đóng trước")
+            running = self._fixed_running.get(key)
+            if running:
+                proxy.stop(running)
+            self._fixed_running = {k: v for k, v in self._fixed_running.items() if k != key}
+            self._fixed = fixed.with_enabled(self._fixed, key, False)
+            fixed.save(self._fixed)
+
+    def delete_fixed(self, key: str) -> None:
+        with self._lock:
+            self._require_fixed(key)
+            if key in self._fixed_running:
+                raise store.ValidationError("Tắt proxy này trước khi xoá")
+            self._fixed = [r for r in self._fixed if r.key != key]
+            fixed.save(self._fixed)
+
+    def check_fixed_ip(self, key: str) -> dict:
+        with self._lock:
+            record = self._require_fixed(key)
+            if key not in self._fixed_running:
+                raise store.ValidationError("Bật proxy trước khi kiểm IP")
+        return proxy.lookup_exit(record.http_url())
+
+    def _autostart_fixed(self) -> None:
+        for record in [r for r in self._fixed if r.enabled]:
+            try:
+                self.start_fixed(record.key)
+            except (store.ValidationError, RuntimeError) as error:
+                print(f"Không bật lại được proxy cố định {record.key}: {error}")
 
     # ---- internals (call with lock held) ----
     def _require(self, name: str) -> store.Profile:
@@ -122,9 +198,18 @@ class Manager:
             raise store.ValidationError(f"Không có profile {name}")
         return profile
 
+    def _require_fixed(self, key: str) -> fixed.FixedProxy:
+        record = fixed.find(self._fixed, key)
+        if record is None:
+            raise store.ValidationError(f"Không có proxy cố định cho {key}")
+        return record
+
     def _proxy_url(self, profile: store.Profile) -> str:
         if not profile.proxy.startswith("vpn:"):
             return profile.proxy
+        if profile.proxy in self._fixed_running:
+            # One tunnel per WireGuard key: reuse the fixed proxy instead of opening a second one.
+            return self._require_fixed(profile.proxy).http_url()
         running = self._proxies.get(profile.proxy)
         if running is None or not running.alive():
             conf = store.vpn_config_path(profile.proxy)
@@ -151,3 +236,4 @@ class Manager:
         for running in idle.values():
             proxy.stop(running)
         self._proxies = {k: p for k, p in self._proxies.items() if k not in idle}
+        self._fixed_running = {k: p for k, p in self._fixed_running.items() if p.alive()}
